@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow all reads and writes (suitable for a private family app)
+    // For production you'd want to add auth, but for a shared family trip this is fine.
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
