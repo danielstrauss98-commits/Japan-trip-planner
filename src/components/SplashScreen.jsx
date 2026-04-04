@@ -1,18 +1,7 @@
 import { useState, useEffect } from 'react'
 
-const SUSHI_COUNT = 14
 const BG = 'linear-gradient(160deg, #1e1b4b 0%, #312e81 35%, #7c1d40 75%, #450a0a 100%)'
 const BTN_BG = 'linear-gradient(135deg, #6366f1, #a855f7)'
-
-function generateSushis() {
-  return Array.from({ length: SUSHI_COUNT }, (_, i) => ({
-    id: i,
-    left: `${5 + Math.random() * 90}%`,
-    duration: `${9 + Math.random() * 12}s`,
-    delay: `${Math.random() * 14}s`,
-    size: `${1.4 + Math.random() * 1.4}rem`,
-  }))
-}
 
 export default function SplashScreen({ members, onUnlock }) {
   // If already password-unlocked from a previous visit, jump straight to person selection
@@ -22,7 +11,6 @@ export default function SplashScreen({ members, onUnlock }) {
   const [password, setPassword] = useState('')
   const [shaking, setShaking] = useState(false)
   const [selectedMember, setSelectedMember] = useState(null)
-  const [sushis] = useState(generateSushis)
 
   // Auto-advance from welcome screen into the app after 2.5 s
   useEffect(() => {
@@ -54,17 +42,6 @@ export default function SplashScreen({ members, onUnlock }) {
       className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center"
       style={{ background: BG }}
     >
-      {/* Floating sushi */}
-      {sushis.map(s => (
-        <span
-          key={s.id}
-          className="sushi-float"
-          style={{ left: s.left, bottom: 0, fontSize: s.size, animationDuration: s.duration, animationDelay: s.delay, zIndex: 0 }}
-        >
-          🍣
-        </span>
-      ))}
-
       {/* Radial glow */}
       <div
         className="absolute inset-0 pointer-events-none"

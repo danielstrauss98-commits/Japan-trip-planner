@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react'
-import { X, Trash2 } from 'lucide-react'
+import { X, Trash2, Plus, Link, MessageSquare } from 'lucide-react'
 import { ACTIVITY_CATEGORIES } from '../constants'
+
+const TIME_OF_DAY_OPTIONS = [
+  { id: 'morning',   label: 'Morning',   emoji: '🌅' },
+  { id: 'afternoon', label: 'Afternoon', emoji: '☀️' },
+  { id: 'night',     label: 'Night',     emoji: '🌙' },
+  { id: 'other',     label: 'Other',     emoji: '⏰' },
+]
 
 const TIME_OPTIONS = (() => {
   const opts = []
@@ -15,25 +22,39 @@ const TIME_OPTIONS = (() => {
   return opts
 })()
 
-export default function ActivityModal({ activity, date, members, onSave, onDelete, onClose }) {
+export default function ActivityModal({ activity, date, members, currentUserId, onSave, onDelete, onClose }) {
   const isEdit = Boolean(activity)
+  const currentUser = members.find(m => m.id === currentUserId)
+
   const [form, setForm] = useState({
     title: '',
     description: '',
     date: date || '',
     startTime: '',
     endTime: '',
+    timeOfDay: [],
     category: 'sightseeing',
     location: '',
     notes: '',
     memberIds: [],
     booked: false,
     order: Date.now(),
+    comments: [],
+    links: [],
   })
+  const [commentInput, setCommentInput] = useState('')
 
   useEffect(() => {
-    if (activity) setForm({ ...form, ...activity })
+    if (activity) setForm(f => ({
+      ...f, ...activity,
+      timeOfDay: activity.timeOfDay || [],
+      comments: activity.comments || [],
+      links: activity.links || [],
+    }))
   }, [activity])
+
+  const hasOther = form.timeOfDay.includes('other')
+  const showExactTime = form.timeOfDay.length > 0 || form.startTime || form.endTime
 
   const toggle = (key, val) =>
     setForm(f => ({
@@ -41,10 +62,32 @@ export default function ActivityModal({ activity, date, members, onSave, onDelet
       [key]: f[key].includes(val) ? f[key].filter(x => x !== val) : [...f[key], val],
     }))
 
+  const handleAddComment = () => {
+    const text = commentInput.trim()
+    if (!text) return
+    const comment = {
+      text,
+      authorId: currentUserId || '',
+      authorName: currentUser?.name || 'Someone',
+      createdAt: Date.now(),
+    }
+    setForm(f => ({ ...f, comments: [...f.comments, comment] }))
+    setCommentInput('')
+  }
+
+  const handleAddLink = () =>
+    setForm(f => ({ ...f, links: [...f.links, ''] }))
+
+  const handleLinkChange = (i, val) =>
+    setForm(f => ({ ...f, links: f.links.map((l, idx) => idx === i ? val : l) }))
+
+  const handleRemoveLink = (i) =>
+    setForm(f => ({ ...f, links: f.links.filter((_, idx) => idx !== i) }))
+
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!form.title.trim()) return
-    onSave(form)
+    onSave({ ...form, links: form.links.filter(l => l.trim()) })
   }
 
   return (
@@ -95,40 +138,74 @@ export default function ActivityModal({ activity, date, members, onSave, onDelet
             </div>
           </div>
 
-          {/* Date & Times */}
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-              <input
-                type="date"
-                value={form.date}
-                onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start</label>
-              <select
-                value={form.startTime}
-                onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
-                className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-              >
-                <option value="">--</option>
-                {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End</label>
-              <select
-                value={form.endTime}
-                onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))}
-                className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-              >
-                <option value="">--</option>
-                {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
+          {/* Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+            <input
+              type="date"
+              value={form.date}
+              onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
           </div>
+
+          {/* Time of Day */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Time of Day</label>
+            <div className="flex flex-wrap gap-2">
+              {TIME_OF_DAY_OPTIONS.map(opt => {
+                const active = form.timeOfDay.includes(opt.id)
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => toggle('timeOfDay', opt.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                      active
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    {opt.emoji} {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+            {hasOther && (
+              <p className="text-xs text-indigo-500 mt-1.5">Exact start time is required for "Other"</p>
+            )}
+          </div>
+
+          {/* Exact Time — shown when any TOD is selected, or when existing time is set */}
+          {showExactTime && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start time{hasOther ? ' *' : ' (optional)'}
+                </label>
+                <select
+                  value={form.startTime}
+                  onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
+                  required={hasOther}
+                  className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                >
+                  <option value="">--</option>
+                  {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">End time (optional)</label>
+                <select
+                  value={form.endTime}
+                  onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))}
+                  className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                >
+                  <option value="">--</option>
+                  {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Location */}
           <div>
@@ -160,10 +237,88 @@ export default function ActivityModal({ activity, date, members, onSave, onDelet
             <textarea
               value={form.notes}
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              placeholder="Booking info, tips, links..."
+              placeholder="Booking info, tips..."
               rows={2}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
             />
+          </div>
+
+          {/* Links */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                <Link size={13} className="text-gray-400" />
+                Links
+              </label>
+              <button
+                type="button"
+                onClick={handleAddLink}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors"
+              >
+                <Plus size={11} />
+                Add Link
+              </button>
+            </div>
+            {form.links.length > 0 && (
+              <div className="space-y-2">
+                {form.links.map((link, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <input
+                      type="url"
+                      value={link}
+                      onChange={e => handleLinkChange(i, e.target.value)}
+                      placeholder="https://..."
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveLink(i)}
+                      className="p-1.5 text-gray-300 hover:text-red-400 rounded-lg hover:bg-red-50 transition-colors flex-shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Comments */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
+              <MessageSquare size={13} className="text-gray-400" />
+              Comments
+            </label>
+
+            {form.comments.length > 0 && (
+              <div className="space-y-1.5 mb-3 max-h-40 overflow-y-auto">
+                {form.comments.map((c, i) => (
+                  <div key={i} className="flex gap-1.5 text-sm bg-gray-50 rounded-lg px-3 py-2 leading-snug">
+                    <span className="font-semibold text-gray-700 flex-shrink-0">{c.authorName}:</span>
+                    <span className="text-gray-600">{c.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={commentInput}
+                onChange={e => setCommentInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddComment() } }}
+                placeholder={currentUser ? `Comment as ${currentUser.name}…` : 'Add a comment…'}
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <button
+                type="button"
+                onClick={handleAddComment}
+                disabled={!commentInput.trim()}
+                className="px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+              >
+                Add
+              </button>
+            </div>
           </div>
 
           {/* Family Members */}

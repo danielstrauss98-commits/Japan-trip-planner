@@ -1,7 +1,31 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Clock, MapPin, GripVertical } from 'lucide-react'
+import { Clock, MapPin, GripVertical, ExternalLink, MessageSquare } from 'lucide-react'
 import { getCategoryById } from '../constants'
+
+const TOD_LABEL = { morning: 'Morning', afternoon: 'Afternoon', night: 'Night', other: 'Other' }
+const TOD_ORDER = ['morning', 'afternoon', 'night', 'other']
+
+function formatTime12(t) {
+  if (!t) return ''
+  const [h, m] = t.split(':').map(Number)
+  const hour12 = h % 12 || 12
+  const ampm = h < 12 ? 'AM' : 'PM'
+  return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`
+}
+
+function buildTimeDisplay(activity) {
+  const tod = (activity.timeOfDay || [])
+    .slice()
+    .sort((a, b) => TOD_ORDER.indexOf(a) - TOD_ORDER.indexOf(b))
+    .map(t => TOD_LABEL[t])
+    .join(' · ')
+  const start = formatTime12(activity.startTime)
+  const end = formatTime12(activity.endTime)
+  const exactStr = start ? (end ? `${start} – ${end}` : start) : ''
+  if (tod && exactStr) return `${tod} · ${exactStr}`
+  return tod || exactStr
+}
 
 export default function ActivityCard({ activity, members, onClick }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -63,10 +87,10 @@ export default function ActivityCard({ activity, members, onClick }) {
 
           {/* Time & location */}
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mb-2">
-            {(activity.startTime || activity.endTime) && (
+            {buildTimeDisplay(activity) && (
               <span className="flex items-center gap-1 text-xs text-gray-500">
                 <Clock size={10} />
-                {activity.startTime}{activity.endTime ? ` – ${activity.endTime}` : ''}
+                {buildTimeDisplay(activity)}
               </span>
             )}
             {activity.location && (
@@ -90,6 +114,37 @@ export default function ActivityCard({ activity, members, onClick }) {
                   {m.name.charAt(0)}
                 </span>
               ))}
+            </div>
+          )}
+
+          {/* Links */}
+          {activity.links?.filter(l => l.trim()).length > 0 && (
+            <div className="flex flex-col gap-0.5 mt-1.5">
+              {activity.links.filter(l => l.trim()).map((link, i) => {
+                let label
+                try { label = new URL(link).hostname.replace('www.', '') } catch { label = link }
+                return (
+                  <a
+                    key={i}
+                    href={link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 hover:underline w-fit"
+                  >
+                    <ExternalLink size={10} className="flex-shrink-0" />
+                    <span className="truncate max-w-[160px]">{label}</span>
+                  </a>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Comments count */}
+          {activity.comments?.length > 0 && (
+            <div className="flex items-center gap-1 mt-1.5 text-xs text-gray-400">
+              <MessageSquare size={10} />
+              <span>{activity.comments.length} comment{activity.comments.length !== 1 ? 's' : ''}</span>
             </div>
           )}
 

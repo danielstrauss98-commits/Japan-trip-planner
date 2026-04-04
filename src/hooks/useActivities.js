@@ -11,6 +11,7 @@ export function useActivities(versionId) {
 
   useEffect(() => {
     if (!versionId) { setActivities([]); setLoading(false); return }
+    setLoading(true)
     const q = query(
       collection(db, 'versions', versionId, 'activities'),
       orderBy('order', 'asc')

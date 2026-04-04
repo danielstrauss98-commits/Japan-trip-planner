@@ -48,7 +48,7 @@ export default function App() {
 
   const { versions, loading: versionsLoading, error: versionsError, addVersion, renameVersion, deleteVersion } = useVersions()
   const [activeVersionId, setActiveVersionId] = useState(null)
-  const { activities, addActivity, updateActivity, deleteActivity, error: activitiesError } = useActivities(
+  const { activities, loading: activitiesLoading, addActivity, updateActivity, deleteActivity, error: activitiesError } = useActivities(
     activeVersionId || versions[0]?.id
   )
   const { members, tripDates, saveSettings, error: settingsError } = useSettings()
@@ -71,6 +71,13 @@ export default function App() {
   const dates = useMemo(() => getDatesInRange(tripDates.start, tripDates.end), [tripDates])
 
   const sortByTime = (arr) => [...arr].sort((a, b) => {
+    const TOD_ORDER = { morning: 0, afternoon: 1, night: 2, other: 3 }
+    const todKey = (act) => {
+      const tod = act.timeOfDay || []
+      return tod.length === 0 ? 4 : Math.min(...tod.map(t => TOD_ORDER[t] ?? 4))
+    }
+    const aOrd = todKey(a), bOrd = todKey(b)
+    if (aOrd !== bOrd) return aOrd - bOrd
     const aTime = a.startTime || '99:99'
     const bTime = b.startTime || '99:99'
     if (aTime !== bTime) return aTime.localeCompare(bTime)
@@ -194,7 +201,7 @@ export default function App() {
     )
   }
 
-  if (versionsLoading) {
+  if (versionsLoading || (currentVersionId && activitiesLoading)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-pink-50 flex items-center justify-center">
         <div className="text-center">
@@ -211,13 +218,18 @@ export default function App() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-pink-50/30">
       {/* Firestore error banner */}
       {firestoreError && (
-        <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-xs text-red-700 flex items-center gap-2">
-          <span>⚠️</span>
-          <span>
-            <strong>Firebase connection error</strong> — data may not be saving.
-            Check your Firestore rules (test mode must be enabled) and your internet connection.
-            Error: <code>{firestoreError.code}</code>
-          </span>
+        <div className="bg-red-50 border-b border-red-200 px-4 py-3 text-xs text-red-700">
+          <div className="flex items-start gap-2">
+            <span className="text-base leading-none mt-0.5">⚠️</span>
+            <div>
+              <p className="font-semibold mb-0.5">Firebase error — data is NOT saving ({firestoreError.code})</p>
+              {firestoreError.code === 'permission-denied' ? (
+                <p>Your Firestore security rules are blocking access. Run <code className="bg-red-100 px-1 rounded">npm run deploy:rules</code> in the project folder (after <code className="bg-red-100 px-1 rounded">firebase login</code>), or paste the rules from <code className="bg-red-100 px-1 rounded">firestore.rules</code> directly into the Firebase console → Firestore → Rules.</p>
+              ) : (
+                <p>Check your internet connection and Firebase project config in <code className="bg-red-100 px-1 rounded">src/firebase.js</code>.</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -355,6 +367,7 @@ export default function App() {
           activity={activityModal.activity}
           date={activityModal.date}
           members={members}
+          currentUserId={currentUserId}
           onSave={handleSaveActivity}
           onDelete={handleDeleteActivity}
           onClose={() => setActivityModal(null)}
