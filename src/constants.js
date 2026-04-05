@@ -12,7 +12,7 @@ export const FAMILY_MEMBERS = [
 export const ACTIVITY_CATEGORIES = [
   { id: 'sightseeing', label: 'Sightseeing', emoji: '🏯', color: 'bg-blue-100 text-blue-700' },
   { id: 'food',        label: 'Food & Drink', emoji: '🍜', color: 'bg-orange-100 text-orange-700' },
-  { id: 'transport',   label: 'Transport',    emoji: '🚄', color: 'bg-gray-100 text-gray-700' },
+  { id: 'transport',   label: 'Local Travel', emoji: '🚌', color: 'bg-gray-100 text-gray-700' },
   { id: 'shopping',    label: 'Shopping',     emoji: '🛍️', color: 'bg-pink-100 text-pink-700' },
   { id: 'nature',      label: 'Nature',       emoji: '🌸', color: 'bg-green-100 text-green-700' },
   { id: 'culture',     label: 'Culture',      emoji: '⛩️', color: 'bg-purple-100 text-purple-700' },

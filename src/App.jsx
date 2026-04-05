@@ -9,7 +9,7 @@ import {
   closestCorners,
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
-import { Settings, Download } from 'lucide-react'
+import { Settings, Download, BookOpen } from 'lucide-react'
 
 import { useVersions } from './hooks/useVersions'
 import { useActivities } from './hooks/useActivities'
@@ -24,6 +24,9 @@ import ImportModal from './components/ImportModal'
 import SettingsModal from './components/SettingsModal'
 import MemberFilter from './components/MemberFilter'
 import SplashScreen from './components/SplashScreen'
+import TravelModal from './components/TravelModal'
+import CityAutocomplete from './components/CityAutocomplete'
+import ItineraryView from './components/ItineraryView'
 
 function getDatesInRange(start, end) {
   if (!start || !end) return []
@@ -38,15 +41,13 @@ function getDatesInRange(start, end) {
 }
 
 export default function App() {
-  // Require BOTH a correct password AND a person selection.
-  // This forces the splash to reappear when the person-picker feature is new.
   const [unlocked, setUnlocked] = useState(() =>
     localStorage.getItem('japan_trip_unlocked') === '1' &&
     Boolean(localStorage.getItem('japan_trip_user'))
   )
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('japan_trip_user'))
 
-  const { versions, loading: versionsLoading, error: versionsError, addVersion, renameVersion, deleteVersion } = useVersions()
+  const { versions, loading: versionsLoading, error: versionsError, addVersion, renameVersion, deleteVersion, updateVersionData } = useVersions()
   const [activeVersionId, setActiveVersionId] = useState(null)
   const { activities, loading: activitiesLoading, addActivity, updateActivity, deleteActivity, error: activitiesError } = useActivities(
     activeVersionId || versions[0]?.id
@@ -54,14 +55,21 @@ export default function App() {
   const { members, tripDates, saveSettings, error: settingsError } = useSettings()
 
   const [activityModal, setActivityModal] = useState(null)
+  const [travelModal, setTravelModal] = useState(null)
+  const [editingCity, setEditingCity] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showItinerary, setShowItinerary] = useState(false)
   const [filterMemberIds, setFilterMemberIds] = useState([])
   const [dragActive, setDragActive] = useState(null)
 
   const firestoreError = versionsError || activitiesError || settingsError
 
   const currentVersionId = activeVersionId || versions[0]?.id
+
+  const currentVersion = versions.find(v => v.id === currentVersionId)
+  const cityAssignments = currentVersion?.cityAssignments || {}
+  const goneHome = currentVersion?.goneHome || []
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -71,7 +79,7 @@ export default function App() {
   const dates = useMemo(() => getDatesInRange(tripDates.start, tripDates.end), [tripDates])
 
   const sortByTime = (arr) => [...arr].sort((a, b) => {
-    const TOD_ORDER = { morning: 0, afternoon: 1, night: 2, other: 3 }
+    const TOD_ORDER = { morning: 0, afternoon: 1, night: 2, other: 3, evening: 2 }
     const todKey = (act) => {
       const tod = act.timeOfDay || []
       return tod.length === 0 ? 4 : Math.min(...tod.map(t => TOD_ORDER[t] ?? 4))
@@ -81,6 +89,8 @@ export default function App() {
     const aTime = a.startTime || '99:99'
     const bTime = b.startTime || '99:99'
     if (aTime !== bTime) return aTime.localeCompare(bTime)
+    if (a.type === 'travel' && b.type !== 'travel') return -1
+    if (a.type !== 'travel' && b.type === 'travel') return 1
     return (a.order || 0) - (b.order || 0)
   })
 
@@ -94,11 +104,109 @@ export default function App() {
     return map
   }, [activities, dates])
 
-  // Activities with no date, or a date outside the trip range
   const unscheduled = useMemo(() =>
     sortByTime(activities.filter(a => !a.date || !dates.includes(a.date))),
     [activities, dates]
   )
+
+  const dateStates = useMemo(() => {
+    const states = {}
+    let currentCity = null
+    let split = null
+
+    for (const date of dates) {
+      let reunionCity = null
+      let splitStartedThisDay = false
+
+      const dayTravels = activities
+        .filter(a => a.type === 'travel' && a.date === date)
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+
+      for (const event of dayTravels) {
+        const activeIds = members.map(m => m.id).filter(id => !goneHome.includes(id))
+        const traveling = (event.memberIds || []).filter(id => activeIds.includes(id))
+        const staying = activeIds.filter(id => !traveling.includes(id))
+
+        if (event.travelType === 'start_of_trip') {
+          if (event.destinationCity) currentCity = event.destinationCity
+
+        } else if (event.travelType === 'between_cities') {
+          if (!split) {
+            if (staying.length === 0) {
+              currentCity = event.destinationCity || currentCity
+            } else {
+              split = {
+                groupA: traveling,
+                cityA: event.destinationCity || '',
+                groupB: staying,
+                cityB: event.originCity || currentCity || '',
+              }
+              splitStartedThisDay = true
+            }
+          } else {
+            // Already split — check for reunion
+            const travelingSet = new Set(traveling)
+            const dest = (event.destinationCity || '').trim().toLowerCase()
+            const cityA = (split.cityA || '').trim().toLowerCase()
+            const cityB = (split.cityB || '').trim().toLowerCase()
+            const groupBAllTraveling = split.groupB.length > 0 && split.groupB.every(id => travelingSet.has(id))
+            const groupAAllTraveling = split.groupA.length > 0 && split.groupA.every(id => travelingSet.has(id))
+            const isReunion =
+              staying.length === 0 ||
+              (groupBAllTraveling && dest && dest === cityA) ||
+              (groupAAllTraveling && dest && dest === cityB)
+
+            if (isReunion) {
+              reunionCity = event.destinationCity || currentCity || ''
+              currentCity = reunionCity
+              split = null
+            } else {
+              // Update which group's city changed
+              if (groupAAllTraveling) split = { ...split, cityA: event.destinationCity || split.cityA }
+              if (groupBAllTraveling) split = { ...split, cityB: event.destinationCity || split.cityB }
+            }
+          }
+
+        } else if (event.travelType === 'travel_home') {
+          if (split) {
+            const newGroupA = split.groupA.filter(id => !traveling.includes(id))
+            const newGroupB = split.groupB.filter(id => !traveling.includes(id))
+            if (newGroupA.length === 0 || newGroupB.length === 0) {
+              const prevSplit = { ...split }
+              split = null
+              currentCity = newGroupA.length > 0 ? prevSplit.cityA : newGroupB.length > 0 ? prevSplit.cityB : currentCity
+            } else {
+              split = { ...split, groupA: newGroupA, groupB: newGroupB }
+            }
+          }
+        }
+      }
+
+      const manualCities = cityAssignments[date]
+      let cities
+      if (manualCities && manualCities.length > 0) {
+        cities = manualCities
+      } else if (split && splitStartedThisDay) {
+        // Only show "City A → City B" on the day the split starts
+        cities = [split.cityA, split.cityB].filter(Boolean)
+      } else if (split) {
+        // On subsequent split days, don't repeat the route header
+        cities = []
+      } else if (currentCity) {
+        cities = [currentCity]
+      } else {
+        cities = []
+      }
+
+      states[date] = {
+        split: split ? { ...split } : null,
+        reunion: reunionCity ? { city: reunionCity } : null,
+        cities,
+      }
+    }
+
+    return states
+  }, [activities, members, goneHome, cityAssignments, dates])
 
   const handleDragStart = ({ active }) => {
     setDragActive(activities.find(a => a.id === active.id) || null)
@@ -111,7 +219,6 @@ export default function App() {
     const activeActivity = activities.find(a => a.id === active.id)
     if (!activeActivity) return
 
-    // ── Dropped onto the unassigned panel drop zone ──
     if (over.id === 'unassigned') {
       if (activeActivity.date) {
         const newOrder = (unscheduled.at(-1)?.order || 0) + 1000
@@ -120,9 +227,8 @@ export default function App() {
       return
     }
 
-    // ── Dropped onto a day column drop zone ──
     if (over.id.startsWith('day-')) {
-      const newDate = over.id.replace('day-', '')
+      const newDate = over.id.replace('day-', '').replace(/-[AB]$/, '')
       if (activeActivity.date !== newDate) {
         const dayActivities = activitiesByDate[newDate] || []
         const newOrder = (dayActivities.at(-1)?.order || 0) + 1000
@@ -131,7 +237,6 @@ export default function App() {
       return
     }
 
-    // ── Dropped over another activity card ──
     const overActivity = activities.find(a => a.id === over.id)
     if (!overActivity) return
 
@@ -139,7 +244,6 @@ export default function App() {
     const overDate = overActivity.date && dates.includes(overActivity.date) ? overActivity.date : ''
 
     if (activeDate === overDate) {
-      // Reorder within the same bucket (same day or both unscheduled)
       const bucket = overDate
         ? [...(activitiesByDate[overDate] || [])]
         : [...unscheduled]
@@ -151,7 +255,6 @@ export default function App() {
         if (act.order !== i * 100) updateActivity(act.id, { order: i * 100 })
       })
     } else {
-      // Move to overActivity's bucket, inserting at that position
       const destBucket = overDate
         ? [...(activitiesByDate[overDate] || [])]
         : [...unscheduled]
@@ -174,6 +277,54 @@ export default function App() {
     }
   }
 
+  const handleSaveTravelEvent = async (form) => {
+    const existingEvent = travelModal?.event
+    setTravelModal(null)
+
+    if (existingEvent) {
+      await updateActivity(existingEvent.id, form)
+    } else {
+      const bucket = activitiesByDate[form.date] || []
+      const order = (bucket.at(-1)?.order || 0) + 1000
+      await addActivity({ ...form, order, addedBy: currentUser?.name || '' })
+    }
+
+    if (form.travelType === 'travel_home' && form.memberIds?.length > 0) {
+      const newGoneHome = [...new Set([...goneHome, ...form.memberIds])]
+      updateVersionData(currentVersionId, { goneHome: newGoneHome })
+    }
+
+    if (form.travelType === 'start_of_trip' && form.destinationCity) {
+      const newAssignments = { ...cityAssignments, [form.date]: [form.destinationCity] }
+      updateVersionData(currentVersionId, { cityAssignments: newAssignments })
+    }
+  }
+
+  const handleDeleteTravelEvent = async () => {
+    if (travelModal?.event) {
+      await deleteActivity(travelModal.event.id)
+      setTravelModal(null)
+    }
+  }
+
+  const handleEditCity = (date) => {
+    setEditingCity({ date })
+  }
+
+  const handleSaveCity = (date, cityString) => {
+    setEditingCity(null)
+    const cities = cityString.trim()
+      ? cityString.split(',').map(c => c.trim()).filter(Boolean)
+      : []
+    const newAssignments = { ...cityAssignments }
+    if (cities.length === 0) {
+      delete newAssignments[date]
+    } else {
+      newAssignments[date] = cities
+    }
+    updateVersionData(currentVersionId, { cityAssignments: newAssignments })
+  }
+
   const handleImport = (activitiesToImport) => {
     activitiesToImport.forEach((act, i) => {
       const order = (unscheduled.at(-1)?.order || 0) + (i + 1) * 1000
@@ -188,7 +339,6 @@ export default function App() {
     }
   }
 
-  // ── Password + person gate ──
   if (!unlocked) {
     return (
       <SplashScreen
@@ -216,7 +366,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-pink-50/30">
-      {/* Firestore error banner */}
       {firestoreError && (
         <div className="bg-red-50 border-b border-red-200 px-4 py-3 text-xs text-red-700">
           <div className="flex items-start gap-2">
@@ -233,11 +382,9 @@ export default function App() {
         </div>
       )}
 
-      {/* Header */}
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm">
         <div className="max-w-full px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-4">
-            {/* Logo */}
             <div className="flex items-center gap-2.5 flex-shrink-0">
               <span className="text-2xl">⛩️</span>
               <div>
@@ -250,7 +397,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Version bar */}
             <div className="flex-1 min-w-0">
               <VersionBar
                 versions={versions}
@@ -262,7 +408,6 @@ export default function App() {
               />
             </div>
 
-            {/* Current user + import + settings */}
             <div className="flex items-center gap-2 flex-shrink-0">
               {currentUser && (
                 <button
@@ -279,6 +424,14 @@ export default function App() {
                   <span className="hidden sm:inline">{currentUser.name}</span>
                 </button>
               )}
+              <button
+                onClick={() => setShowItinerary(true)}
+                title="View detailed itinerary"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors"
+              >
+                <BookOpen size={15} />
+                <span className="hidden sm:inline">Itinerary</span>
+              </button>
               {versions.length > 1 && (
                 <button
                   onClick={() => setShowImport(true)}
@@ -297,7 +450,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Member filter */}
           <div className="mt-2.5">
             <MemberFilter
               members={members}
@@ -308,7 +460,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main content */}
       <main className="px-4 sm:px-6 py-6">
         {!currentVersionId ? (
           <EmptyState onAdd={() => addVersion('Option A').then(id => setActiveVersionId(id))} />
@@ -321,9 +472,7 @@ export default function App() {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            {/* Single flex container — stacks vertically on mobile, side-by-side on md+ */}
             <div className="flex flex-col md:flex-row gap-5 items-start">
-              {/* ── Itinerary: vertical stack of day rows ── */}
               <div className="flex-1 min-w-0 space-y-3 w-full">
                 {dates.map(date => (
                   <DayColumn
@@ -332,13 +481,19 @@ export default function App() {
                     activities={activitiesByDate[date] || []}
                     members={members}
                     filterMemberIds={filterMemberIds}
-                    onAddActivity={(d) => setActivityModal({ date: d })}
+                    onAddActivity={(d, prefillIds) => setActivityModal({ date: d, prefillMemberIds: prefillIds })}
+                    onAddTravel={(d) => setTravelModal({ date: d, currentCity: dateStates[d]?.cities?.[0] || null })}
                     onEditActivity={(act) => setActivityModal({ activity: act })}
+                    onEditTravel={(evt) => setTravelModal({ event: evt, date: evt.date, currentCity: evt.originCity || null })}
+                    cities={dateStates[date]?.cities || []}
+                    onEditCity={handleEditCity}
+                    split={dateStates[date]?.split || null}
+                    reunion={dateStates[date]?.reunion || null}
+                    goneHome={goneHome}
                   />
                 ))}
               </div>
 
-              {/* ── Unassigned panel: right sidebar (single instance) ── */}
               <div className="w-full md:w-72 md:flex-shrink-0 md:sticky md:top-[108px] md:max-h-[calc(100vh-130px)] md:overflow-y-auto scrollbar-thin">
                 <UnassignedPanel
                   activities={unscheduled}
@@ -361,16 +516,44 @@ export default function App() {
         )}
       </main>
 
-      {/* Modals */}
       {activityModal && (
         <ActivityModal
           activity={activityModal.activity}
           date={activityModal.date}
           members={members}
           currentUserId={currentUserId}
+          prefillMemberIds={activityModal.prefillMemberIds}
           onSave={handleSaveActivity}
+          onSaveComment={(newComments) => {
+            if (activityModal?.activity) {
+              updateActivity(activityModal.activity.id, { comments: newComments })
+            }
+          }}
           onDelete={handleDeleteActivity}
           onClose={() => setActivityModal(null)}
+        />
+      )}
+
+      {travelModal && (
+        <TravelModal
+          date={travelModal.date}
+          members={members}
+          goneHome={goneHome}
+          currentUserId={currentUserId}
+          currentCity={travelModal.currentCity}
+          event={travelModal.event}
+          onSave={handleSaveTravelEvent}
+          onDelete={handleDeleteTravelEvent}
+          onClose={() => setTravelModal(null)}
+        />
+      )}
+
+      {editingCity && (
+        <CityEditModal
+          date={editingCity.date}
+          current={(cityAssignments[editingCity.date] || []).join(', ')}
+          onSave={(cityStr) => handleSaveCity(editingCity.date, cityStr)}
+          onClose={() => setEditingCity(null)}
         />
       )}
 
@@ -391,6 +574,40 @@ export default function App() {
           onClose={() => setShowImport(false)}
         />
       )}
+
+      {showItinerary && (
+        <ItineraryView
+          dates={dates}
+          activitiesByDate={activitiesByDate}
+          members={members}
+          dateStates={dateStates}
+          tripDates={tripDates}
+          onClose={() => setShowItinerary(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function CityEditModal({ date, current, onSave, onClose }) {
+  const [value, setValue] = useState(current)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h3 className="text-base font-semibold text-gray-800 mb-1">Set City for {date}</h3>
+        <p className="text-xs text-gray-400 mb-3">Search for a city, or type manually. Separate multiple cities with commas.</p>
+        <div className="mb-3">
+          <CityAutocomplete
+            value={value}
+            onChange={setValue}
+            placeholder="e.g. Tokyo"
+          />
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+          <button onClick={() => onSave(value)} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors">Save</button>
+        </div>
+      </div>
     </div>
   )
 }

@@ -45,7 +45,9 @@ export default function ActivityCard({ activity, members, onClick }) {
     <div
       ref={setNodeRef}
       style={style}
-      className="relative bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      className={`relative bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer ${
+        activity.mustDo ? 'border-l-4 border-l-amber-400' : ''
+      }`}
       onClick={onClick}
     >
       {/* Booked badge — top-right corner */}
@@ -75,6 +77,14 @@ export default function ActivityCard({ activity, members, onClick }) {
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${cat.color}`}>
               {cat.emoji}
             </span>
+            {activity.mustDo && (
+              <span
+                className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 flex-shrink-0 shadow-sm mt-0.5"
+                title="Must Do"
+              >
+                <span className="text-white text-[10px] font-bold leading-none">★</span>
+              </span>
+            )}
             <span className="text-sm font-medium text-gray-800 leading-tight">{activity.title}</span>
           </div>
 

@@ -22,7 +22,7 @@ const TIME_OPTIONS = (() => {
   return opts
 })()
 
-export default function ActivityModal({ activity, date, members, currentUserId, onSave, onDelete, onClose }) {
+export default function ActivityModal({ activity, date, members, currentUserId, prefillMemberIds, onSave, onSaveComment, onDelete, onClose }) {
   const isEdit = Boolean(activity)
   const currentUser = members.find(m => m.id === currentUserId)
 
@@ -36,8 +36,9 @@ export default function ActivityModal({ activity, date, members, currentUserId, 
     category: 'sightseeing',
     location: '',
     notes: '',
-    memberIds: [],
+    memberIds: prefillMemberIds || [],
     booked: false,
+    mustDo: false,
     order: Date.now(),
     comments: [],
     links: [],
@@ -50,6 +51,7 @@ export default function ActivityModal({ activity, date, members, currentUserId, 
       timeOfDay: activity.timeOfDay || [],
       comments: activity.comments || [],
       links: activity.links || [],
+      mustDo: activity.mustDo || false,
     }))
   }, [activity])
 
@@ -71,8 +73,10 @@ export default function ActivityModal({ activity, date, members, currentUserId, 
       authorName: currentUser?.name || 'Someone',
       createdAt: Date.now(),
     }
-    setForm(f => ({ ...f, comments: [...f.comments, comment] }))
+    const newComments = [...form.comments, comment]
+    setForm(f => ({ ...f, comments: newComments }))
     setCommentInput('')
+    if (isEdit && onSaveComment) onSaveComment(newComments)
   }
 
   const handleAddLink = () =>
@@ -370,6 +374,36 @@ export default function ActivityModal({ activity, date, members, currentUserId, 
               })}
             </div>
           </div>
+
+          {/* Must Do toggle */}
+          <label
+            className="flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all select-none"
+            style={form.mustDo
+              ? { borderColor: '#f59e0b', background: '#fffbeb' }
+              : { borderColor: '#e5e7eb', background: 'transparent' }
+            }
+          >
+            <input
+              type="checkbox"
+              checked={form.mustDo || false}
+              onChange={e => setForm(f => ({ ...f, mustDo: e.target.checked }))}
+              className="sr-only"
+            />
+            <div className={`w-5 h-5 rounded flex items-center justify-center border-2 flex-shrink-0 transition-all ${
+              form.mustDo ? 'bg-amber-400 border-amber-400' : 'border-gray-300'
+            }`}>
+              {form.mustDo && <span className="text-white text-[11px] font-bold leading-none">★</span>}
+            </div>
+            <div className="flex-1">
+              <span className={`text-sm font-medium ${form.mustDo ? 'text-amber-700' : 'text-gray-600'}`}>
+                Must Do
+              </span>
+              {!form.mustDo && (
+                <p className="text-xs text-gray-400 leading-tight">Mark as a top priority activity</p>
+              )}
+            </div>
+            {form.mustDo && <span className="text-xl select-none">⭐</span>}
+          </label>
 
           {/* Booked toggle */}
           <label

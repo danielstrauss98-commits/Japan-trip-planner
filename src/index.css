@@ -54,6 +54,25 @@
   animation: shake 0.45s ease;
 }
 
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  /* When printing the itinerary, hide everything except the overlay */
+  body.printing-itinerary > #root > * {
+    display: none !important;
+  }
+  body.printing-itinerary #itinerary-overlay {
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  @page {
+    margin: 1.5cm;
+  }
+}
+
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;

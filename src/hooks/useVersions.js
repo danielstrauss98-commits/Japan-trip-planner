@@ -44,5 +44,8 @@ export function useVersions() {
   const deleteVersion = (id) =>
     deleteDoc(doc(db, 'versions', id))
 
-  return { versions, loading, error, addVersion, renameVersion, deleteVersion }
+  const updateVersionData = (id, data) =>
+    updateDoc(doc(db, 'versions', id), data)
+
+  return { versions, loading, error, addVersion, renameVersion, deleteVersion, updateVersionData }
 }

@@ -10,6 +10,10 @@ export default function UnassignedPanel({ activities, members, filterMemberIds, 
     ? activities
     : activities.filter(a => (a.memberIds || []).some(id => filterMemberIds.includes(id)))
 
+  const mustDo = filtered.filter(a => a.mustDo)
+  const regular = filtered.filter(a => !a.mustDo)
+  const sortableIds = [...mustDo.map(a => a.id), ...regular.map(a => a.id)]
+
   return (
     <div className="w-72 flex-shrink-0 flex flex-col gap-3">
       {/* Header */}
@@ -41,9 +45,32 @@ export default function UnassignedPanel({ activities, members, filterMemberIds, 
             : 'border-dashed border-gray-200 bg-gray-50/60'
         }`}
       >
-        <SortableContext items={filtered.map(a => a.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {filtered.map(activity => (
+            {mustDo.length > 0 && (
+              <>
+                <div className="flex items-center gap-1.5 pb-1">
+                  <span className="text-xs font-semibold text-amber-600">⭐ Must Do</span>
+                  <div className="flex-1 h-px bg-amber-200" />
+                </div>
+                {mustDo.map(activity => (
+                  <ActivityCard
+                    key={activity.id}
+                    activity={activity}
+                    members={members}
+                    onClick={() => onEditActivity(activity)}
+                  />
+                ))}
+                {regular.length > 0 && (
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <div className="flex-1 h-px bg-gray-200" />
+                    <span className="text-xs font-medium text-gray-400">Other</span>
+                    <div className="flex-1 h-px bg-gray-200" />
+                  </div>
+                )}
+              </>
+            )}
+            {regular.map(activity => (
               <ActivityCard
                 key={activity.id}
                 activity={activity}
