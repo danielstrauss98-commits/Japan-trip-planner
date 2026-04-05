@@ -54,6 +54,17 @@
   animation: shake 0.45s ease;
 }
 
+/* Leaflet popup z-index fix inside map overlay */
+#map-overlay .leaflet-pane {
+  z-index: 100;
+}
+#map-overlay .leaflet-popup-pane {
+  z-index: 300;
+}
+#map-overlay .leaflet-control-container {
+  z-index: 400;
+}
+
 @media print {
   .no-print {
     display: none !important;

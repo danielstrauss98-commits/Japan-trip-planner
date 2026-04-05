@@ -9,7 +9,7 @@ import {
   closestCorners,
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
-import { Settings, Download, BookOpen } from 'lucide-react'
+import { Settings, Download, BookOpen, Map } from 'lucide-react'
 
 import { useVersions } from './hooks/useVersions'
 import { useActivities } from './hooks/useActivities'
@@ -27,6 +27,7 @@ import SplashScreen from './components/SplashScreen'
 import TravelModal from './components/TravelModal'
 import CityAutocomplete from './components/CityAutocomplete'
 import ItineraryView from './components/ItineraryView'
+import MapView from './components/MapView'
 
 function getDatesInRange(start, end) {
   if (!start || !end) return []
@@ -42,8 +43,7 @@ function getDatesInRange(start, end) {
 
 export default function App() {
   const [unlocked, setUnlocked] = useState(() =>
-    localStorage.getItem('japan_trip_unlocked') === '1' &&
-    Boolean(localStorage.getItem('japan_trip_user'))
+    localStorage.getItem('japan_trip_unlocked') === '1'
   )
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('japan_trip_user'))
 
@@ -60,6 +60,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showItinerary, setShowItinerary] = useState(false)
+  const [showMap, setShowMap] = useState(false)
   const [filterMemberIds, setFilterMemberIds] = useState([])
   const [dragActive, setDragActive] = useState(null)
 
@@ -267,10 +268,12 @@ export default function App() {
   }
 
   const handleSaveActivity = (form) => {
-    setActivityModal(null)
     if (activityModal?.activity) {
+      // Editing: don't close — ActivityModal switches back to summary view itself
       updateActivity(activityModal.activity.id, form)
     } else {
+      // Creating: close modal after save
+      setActivityModal(null)
       const bucket = form.date ? (activitiesByDate[form.date] || []) : unscheduled
       const order = (bucket.at(-1)?.order || 0) + 1000
       addActivity({ ...form, order, addedBy: currentUser?.name || '' })
@@ -342,11 +345,7 @@ export default function App() {
   if (!unlocked) {
     return (
       <SplashScreen
-        members={members}
-        onUnlock={(memberId) => {
-          setCurrentUserId(memberId)
-          setUnlocked(true)
-        }}
+        onUnlock={() => setUnlocked(true)}
       />
     )
   }
@@ -409,21 +408,34 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              {currentUser && (
+              {currentUser ? (
                 <button
-                  title={`Signed in as ${currentUser.name} — click to switch`}
-                  onClick={() => {
-                    localStorage.removeItem('japan_trip_user')
-                    setUnlocked(false)
-                    setCurrentUserId(null)
-                  }}
+                  title={`${currentUser.name} — click Settings to switch`}
+                  onClick={() => setShowSettings(true)}
                   className="flex items-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-medium border-2 transition-all hover:scale-105"
                   style={{ borderColor: currentUser.color + '66', color: currentUser.color, background: currentUser.color + '12' }}
                 >
                   <span className="text-base leading-none">{currentUser.emoji}</span>
                   <span className="hidden sm:inline">{currentUser.name}</span>
                 </button>
+              ) : (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  title="Select your profile in Settings"
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-medium border-2 border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-500 transition-all"
+                >
+                  <span className="text-base leading-none">👤</span>
+                  <span className="hidden sm:inline">Set profile</span>
+                </button>
               )}
+              <button
+                onClick={() => setShowMap(true)}
+                title="View map"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+              >
+                <Map size={15} />
+                <span className="hidden sm:inline">Map</span>
+              </button>
               <button
                 onClick={() => setShowItinerary(true)}
                 title="View detailed itinerary"
@@ -561,6 +573,11 @@ export default function App() {
         <SettingsModal
           members={members}
           tripDates={tripDates}
+          currentUserId={currentUserId}
+          onSelectUser={(id) => {
+            localStorage.setItem('japan_trip_user', id)
+            setCurrentUserId(id)
+          }}
           onSave={saveSettings}
           onClose={() => setShowSettings(false)}
         />
@@ -572,6 +589,17 @@ export default function App() {
           currentVersionId={currentVersionId}
           onImport={handleImport}
           onClose={() => setShowImport(false)}
+        />
+      )}
+
+      {showMap && dates.length > 0 && (
+        <MapView
+          dates={dates}
+          activitiesByDate={activitiesByDate}
+          members={members}
+          dateStates={dateStates}
+          tripDates={tripDates}
+          onClose={() => setShowMap(false)}
         />
       )}
 

@@ -8,7 +8,7 @@ const MEMBER_COLORS = [
 
 const MEMBER_EMOJIS = ['👨', '👩', '👦', '👧', '👴', '👵', '🧑', '👤']
 
-export default function SettingsModal({ members, tripDates, onSave, onClose }) {
+export default function SettingsModal({ members, tripDates, currentUserId, onSelectUser, onSave, onClose }) {
   const [localMembers, setLocalMembers] = useState(members)
   const [localDates, setLocalDates] = useState(tripDates)
 
@@ -31,6 +31,34 @@ export default function SettingsModal({ members, tripDates, onSave, onClose }) {
         </div>
 
         <div className="p-5 space-y-6">
+          {/* Who are you */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Who are you?</h3>
+            <div className="grid grid-cols-4 gap-2">
+              {members.map(member => {
+                const selected = member.id === currentUserId
+                return (
+                  <button
+                    key={member.id}
+                    type="button"
+                    onClick={() => onSelectUser(member.id)}
+                    className="flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all text-xs font-medium"
+                    style={selected
+                      ? { borderColor: member.color, backgroundColor: member.color + '18' }
+                      : { borderColor: '#e5e7eb' }
+                    }
+                  >
+                    <span className="text-2xl">{member.emoji}</span>
+                    <span className="truncate w-full text-center text-xs"
+                      style={selected ? { color: member.color } : { color: '#6b7280' }}>
+                      {member.name.split(' ')[0]}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Trip Dates */}
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Trip Dates</h3>
