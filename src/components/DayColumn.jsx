@@ -4,6 +4,7 @@ import { Plus, Pencil, Plane } from 'lucide-react'
 import { useState } from 'react'
 import ActivityCard from './ActivityCard'
 import TravelEventCard from './TravelEventCard'
+import HotelCard from './HotelCard'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -89,27 +90,43 @@ function ActivityGroup({ items, members, filterMemberIds, onEditActivity, onEdit
   const visible = filterMemberIds.length === 0
     ? items
     : items.filter(a => (a.memberIds || []).some(id => filterMemberIds.includes(id)))
-  const sortableIds = visible.map(a => a.id)
 
   const visibleTravel = filterMemberIds.length === 0
     ? (travelItems || [])
     : (travelItems || []).filter(a => (a.memberIds || []).some(id => filterMemberIds.includes(id)))
 
+  // Merge and sort activities + travel events by time so travel appears in chronological order
+  const merged = [
+    ...visible.map(a => ({ item: a, isTravel: false })),
+    ...visibleTravel.map(a => ({ item: a, isTravel: true })),
+  ].sort((a, b) => {
+    const keyA = getActivityTimeKey(a.item)
+    const keyB = getActivityTimeKey(b.item)
+    if (keyA !== keyB) return keyA.localeCompare(keyB)
+    // At the same time slot, travel comes first
+    if (a.isTravel && !b.isTravel) return -1
+    if (!a.isTravel && b.isTravel) return 1
+    return (a.item.order || 0) - (b.item.order || 0)
+  })
+
+  const sortableIds = visible.map(a => a.id)
+
   return (
     <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
       <div className="space-y-2">
-        {visible.map(a => (
-          <ActivityCard key={a.id} activity={a} members={members} onClick={() => onEditActivity(a)} />
-        ))}
-        {visibleTravel.map(a => (
-          <TravelEventCard key={a.id} event={a} members={members} onClick={() => onEditTravel && onEditTravel(a)} />
-        ))}
+        {merged.map(({ item, isTravel }) =>
+          isTravel ? (
+            <TravelEventCard key={item.id} event={item} members={members} onClick={() => onEditTravel && onEditTravel(item)} />
+          ) : (
+            <ActivityCard key={item.id} activity={item} members={members} onClick={() => onEditActivity(item)} />
+          )
+        )}
+        {merged.length === 0 && (
+          <div className="h-8 flex items-center">
+            <span className="text-xs text-gray-200">No activities yet</span>
+          </div>
+        )}
       </div>
-      {visible.length === 0 && visibleTravel.length === 0 && (
-        <div className="h-8 flex items-center">
-          <span className="text-xs text-gray-200">No activities yet</span>
-        </div>
-      )}
     </SortableContext>
   )
 }
@@ -117,9 +134,11 @@ function ActivityGroup({ items, members, filterMemberIds, onEditActivity, onEdit
 export default function DayColumn({
   date,
   activities,
+  hotels,
   members,
   onAddActivity,
   onAddTravel,
+  onAddHotel,
   onEditActivity,
   onEditTravel,
   filterMemberIds,
@@ -174,6 +193,23 @@ export default function DayColumn({
     normalActivities = activities
   }
 
+  // ── Hotel cards for this day ────────────────────────────────────────────────
+  const hotelsForDay = (hotels || []).flatMap(hotel => {
+    const { checkInDate, checkOutDate } = hotel
+    if (!checkInDate || !checkOutDate || checkOutDate < checkInDate) return []
+    if (date < checkInDate || date > checkOutDate) return []
+    const isCheckIn  = date === checkInDate
+    const isCheckOut = date === checkOutDate
+    if (isCheckIn && isCheckOut) return [{ hotel, role: 'single' }]
+    if (isCheckIn)  return [{ hotel, role: 'checkin' }]
+    if (isCheckOut) return [{ hotel, role: 'checkout' }]
+    return [{ hotel, role: 'middle' }]
+  })
+  // checkout/single/middle → top (first item); checkin/middle → bottom (last item)
+  // 'single' (same-day check-in/out) shows only once at top
+  const topHotels    = hotelsForDay.filter(h => h.role === 'checkout' || h.role === 'middle' || h.role === 'single')
+  const bottomHotels = hotelsForDay.filter(h => h.role === 'checkin'  || h.role === 'middle')
+
   return (
     <div className={`flex gap-4 rounded-2xl border-2 p-4 transition-all ${
       isOver
@@ -217,6 +253,14 @@ export default function DayColumn({
         {split ? (
           // ── SPLIT MODE ──────────────────────────────────────────────────────
           <>
+            {/* Top hotel cards (checkout / middle) */}
+            {topHotels.length > 0 && (
+              <div className="space-y-1.5 mb-2">
+                {topHotels.map(({ hotel, role }) => (
+                  <HotelCard key={`top-${hotel.id}`} hotel={hotel} role={role} members={members} onClick={() => onEditActivity(hotel)} />
+                ))}
+              </div>
+            )}
             {/* Before-travel section (full width, shown only when there's a split trigger on this day) */}
             {splitTrigger && beforeTravel.length > 0 && (
               <div className="mb-1">
@@ -296,6 +340,12 @@ export default function DayColumn({
                 >
                   <Plane size={13} />Travel
                 </button>
+                <button
+                  onClick={() => onAddHotel(date)}
+                  className="mt-1 flex items-center gap-1 text-xs text-gray-300 hover:text-indigo-400 transition-colors py-1"
+                >
+                  <span className="text-[11px] leading-none">🏨</span>Hotel
+                </button>
               </>
             ) : (
               <>
@@ -319,12 +369,34 @@ export default function DayColumn({
                 >
                   <Plane size={13} />Travel
                 </button>
+                <button
+                  onClick={() => onAddHotel(date)}
+                  className="mt-1 flex items-center gap-1 text-xs text-gray-300 hover:text-indigo-400 transition-colors py-1"
+                >
+                  <span className="text-[11px] leading-none">🏨</span>Hotel
+                </button>
               </>
+            )}
+            {/* Bottom hotel cards (checkin / middle) */}
+            {bottomHotels.length > 0 && (
+              <div className="space-y-1.5 mt-2">
+                {bottomHotels.map(({ hotel, role }) => (
+                  <HotelCard key={`bottom-${hotel.id}`} hotel={hotel} role={role} members={members} onClick={() => onEditActivity(hotel)} />
+                ))}
+              </div>
             )}
           </>
         ) : (
           // ── NORMAL MODE ─────────────────────────────────────────────────────
           <>
+            {/* Top hotel cards: checkout / middle / single */}
+            {topHotels.length > 0 && (
+              <div className="space-y-1.5 mb-2">
+                {topHotels.map(({ hotel, role }) => (
+                  <HotelCard key={`top-${hotel.id}`} hotel={hotel} role={role} members={members} onClick={() => onEditActivity(hotel)} />
+                ))}
+              </div>
+            )}
             <ActivityGroup
               items={normalActivities.filter(a => a.type !== 'travel')}
               members={members}
@@ -334,9 +406,18 @@ export default function DayColumn({
               travelItems={normalActivities.filter(a => a.type === 'travel')}
             />
             {normalActivities.filter(a => a.type !== 'travel').length === 0 &&
-             normalActivities.filter(a => a.type === 'travel').length === 0 && (
+             normalActivities.filter(a => a.type === 'travel').length === 0 &&
+             topHotels.length === 0 && (
               <div className="h-10 flex items-center">
                 <span className="text-xs text-gray-300">Drop activities here</span>
+              </div>
+            )}
+            {/* Bottom hotel cards: checkin / middle / single */}
+            {bottomHotels.length > 0 && (
+              <div className="space-y-1.5 mt-2">
+                {bottomHotels.map(({ hotel, role }) => (
+                  <HotelCard key={`bottom-${hotel.id}`} hotel={hotel} role={role} members={members} onClick={() => onEditActivity(hotel)} />
+                ))}
               </div>
             )}
             <button
@@ -350,6 +431,12 @@ export default function DayColumn({
               className="mt-1 flex items-center gap-1 text-xs text-gray-300 hover:text-rose-400 transition-colors py-1"
             >
               <Plane size={13} />Travel
+            </button>
+            <button
+              onClick={() => onAddHotel(date)}
+              className="mt-1 flex items-center gap-1 text-xs text-gray-300 hover:text-indigo-400 transition-colors py-1"
+            >
+              <span className="text-[11px] leading-none">🏨</span>Hotel
             </button>
           </>
         )}

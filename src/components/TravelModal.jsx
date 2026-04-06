@@ -93,17 +93,13 @@ export default function TravelModal({ date, members, goneHome, currentUserId, cu
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-1">Date</p>
-            {isEdit && form.travelType === 'between_cities' ? (
-              <input
-                type="date"
-                value={form.date}
-                onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              />
-            ) : (
-              <p className="text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2">{form.date}</p>
-            )}
+            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+            <input
+              type="date"
+              value={form.date}
+              onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
           </div>
 
           <div>

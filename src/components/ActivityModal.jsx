@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Trash2, Plus, Link, Clock, MapPin, ExternalLink, Pencil } from 'lucide-react'
+import { X, Trash2, Plus, Link, Clock, MapPin, ExternalLink, Pencil, Copy } from 'lucide-react'
 import { ACTIVITY_CATEGORIES, getCategoryById } from '../constants'
 import AddressAutocomplete from './AddressAutocomplete'
 
@@ -47,10 +47,20 @@ function buildTimeDisplay(data) {
   return tod || exactStr
 }
 
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+function fmtDateShort(str) {
+  if (!str) return ''
+  const d = new Date(str + 'T00:00:00')
+  return `${d.getDate()} ${MONTH_SHORT[d.getMonth()]}`
+}
+
 function formFromData(data, defaults = {}) {
   return {
     title: data.title || '',
     description: data.description || '',
+    type: data.type || (defaults.hotelMode ? 'hotel' : ''),
+    checkInDate: data.checkInDate || defaults.date || '',
+    checkOutDate: data.checkOutDate || '',
     date: data.date || defaults.date || '',
     startTime: data.startTime || '',
     endTime: data.endTime || '',
@@ -71,7 +81,7 @@ function formFromData(data, defaults = {}) {
 
 export default function ActivityModal({
   activity, date, members, currentUserId, prefillMemberIds,
-  onSave, onSaveComment, onDelete, onClose,
+  onSave, onSaveComment, onDelete, onDuplicate, onClose, hotelMode,
 }) {
   const isExisting = Boolean(activity)
   const currentUser = members.find(m => m.id === currentUserId)
@@ -79,7 +89,7 @@ export default function ActivityModal({
   const [mode, setMode] = useState(isExisting ? 'summary' : 'edit')
   const [displayData, setDisplayData] = useState(() => activity || {})
   const [form, setForm] = useState(() =>
-    formFromData(activity || {}, { date, memberIds: prefillMemberIds || [] })
+    formFromData(activity || {}, { date, memberIds: prefillMemberIds || [], hotelMode: hotelMode || false })
   )
   const [commentInput, setCommentInput] = useState('')
 
@@ -125,6 +135,10 @@ export default function ActivityModal({
     e.preventDefault()
     if (!form.title.trim()) return
     const saved = { ...form, links: form.links.filter(l => l.trim()) }
+    if (saved.type === 'hotel') {
+      saved.date = saved.checkInDate  // primary date for Firestore indexing
+      saved.category = 'hotel'
+    }
     onSave(saved)
     if (isExisting) {
       setDisplayData(saved)
@@ -173,6 +187,14 @@ export default function ActivityModal({
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button
+                  onClick={onDuplicate}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors"
+                  title="Duplicate to Unassigned"
+                >
+                  <Copy size={13} />
+                  Duplicate
+                </button>
+                <button
                   onClick={handleEditClick}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
                 >
@@ -190,7 +212,13 @@ export default function ActivityModal({
               {/* Who's attending */}
               {(displayData.memberIds || []).length > 0 && (() => {
                 const attending = members.filter(m => (displayData.memberIds || []).includes(m.id))
-                return attending.length > 0 ? (
+                if (attending.length === 0) return null
+                if (attending.length === members.length) return (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
+                    👨‍👩‍👧‍👦 Whole group
+                  </span>
+                )
+                return (
                   <div className="flex flex-wrap gap-1.5">
                     {attending.map(m => (
                       <span
@@ -202,16 +230,26 @@ export default function ActivityModal({
                       </span>
                     ))}
                   </div>
-                ) : null
+                )
               })()}
 
-              {/* Time */}
-              {buildTimeDisplay(displayData) && (
+              {/* Hotel check-in/out or regular time */}
+              {displayData.type === 'hotel' ? (
+                <div className="flex items-center gap-3 px-3 py-2.5 bg-indigo-50 rounded-xl border border-indigo-100">
+                  <span className="text-lg leading-none">🏨</span>
+                  <div>
+                    <p className="text-xs font-medium text-indigo-500">Hotel Stay</p>
+                    <p className="text-sm font-semibold text-indigo-800">
+                      {fmtDateShort(displayData.checkInDate)} → {fmtDateShort(displayData.checkOutDate)}
+                    </p>
+                  </div>
+                </div>
+              ) : buildTimeDisplay(displayData) ? (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Clock size={13} className="text-gray-400 flex-shrink-0" />
                   {buildTimeDisplay(displayData)}
                 </div>
-              )}
+              ) : null}
 
               {/* Location */}
               {displayData.location && (
@@ -315,108 +353,165 @@ export default function ActivityModal({
             </div>
 
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              {/* Hotel Stay toggle */}
+              {!isExisting && (
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({
+                    ...f,
+                    type: f.type === 'hotel' ? '' : 'hotel',
+                    category: f.type === 'hotel' ? 'sightseeing' : 'hotel',
+                  }))}
+                  className={`flex items-center gap-2 w-full px-4 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
+                    form.type === 'hotel'
+                      ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                      : 'border-dashed border-gray-200 text-gray-400 hover:border-indigo-300 hover:text-indigo-500'
+                  }`}
+                >
+                  <span className="text-base leading-none">🏨</span>
+                  {form.type === 'hotel' ? 'Hotel Stay — click to switch to regular activity' : 'Add as Hotel Stay'}
+                </button>
+              )}
+
               {/* Title */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Activity Name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {form.type === 'hotel' ? 'Hotel Name *' : 'Activity Name *'}
+                </label>
                 <input
                   type="text"
                   value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  placeholder="e.g. Visit Fushimi Inari"
+                  placeholder={form.type === 'hotel' ? 'e.g. APA Hotel Shinjuku' : 'e.g. Visit Fushimi Inari'}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
                   required
                   autoFocus
                 />
               </div>
 
-              {/* Category */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                <div className="flex flex-wrap gap-2">
-                  {ACTIVITY_CATEGORIES.map(cat => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, category: cat.id }))}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                        form.category === cat.id
-                          ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      {cat.emoji} {cat.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Date */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                />
-              </div>
-
-              {/* Time of Day */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Time of Day</label>
-                <div className="flex flex-wrap gap-2">
-                  {TIME_OF_DAY_OPTIONS.map(opt => {
-                    const active = form.timeOfDay.includes(opt.id)
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => toggle('timeOfDay', opt.id)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                          active
-                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm'
-                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                        }`}
-                      >
-                        {opt.emoji} {opt.label}
-                      </button>
-                    )
-                  })}
-                </div>
-                {hasOther && (
-                  <p className="text-xs text-indigo-500 mt-1.5">Exact start time is required for "Other"</p>
-                )}
-              </div>
-
-              {/* Exact Time */}
-              {showExactTime && (
+              {form.type === 'hotel' ? (
+                /* ── Hotel: check-in / check-out pickers ── */
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Start time{hasOther ? ' *' : ' (optional)'}
-                    </label>
-                    <select
-                      value={form.startTime}
-                      onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
-                      required={hasOther}
-                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                    >
-                      <option value="">--</option>
-                      {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Check-in Date *</label>
+                    <input
+                      type="date"
+                      value={form.checkInDate}
+                      onChange={e => setForm(f => ({
+                        ...f,
+                        checkInDate: e.target.value,
+                        // Seed checkOutDate so its calendar opens on the right month
+                        checkOutDate: f.checkOutDate || e.target.value,
+                      }))}
+                      required
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">End time (optional)</label>
-                    <select
-                      value={form.endTime}
-                      onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))}
-                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                    >
-                      <option value="">--</option>
-                      {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Check-out Date *</label>
+                    <input
+                      type="date"
+                      value={form.checkOutDate}
+                      min={form.checkInDate || undefined}
+                      onChange={e => setForm(f => ({ ...f, checkOutDate: e.target.value }))}
+                      required
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
                   </div>
                 </div>
+              ) : (
+                /* ── Regular activity: category + date + time ── */
+                <>
+                  {/* Category */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                    <div className="flex flex-wrap gap-2">
+                      {ACTIVITY_CATEGORIES.filter(c => c.id !== 'hotel').map(cat => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setForm(f => ({ ...f, category: cat.id }))}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                            form.category === cat.id
+                              ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm'
+                              : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          {cat.emoji} {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Date */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                    <input
+                      type="date"
+                      value={form.date}
+                      onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+
+                  {/* Time of Day */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Time of Day</label>
+                    <div className="flex flex-wrap gap-2">
+                      {TIME_OF_DAY_OPTIONS.map(opt => {
+                        const active = form.timeOfDay.includes(opt.id)
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => toggle('timeOfDay', opt.id)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                              active
+                                ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm'
+                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                            }`}
+                          >
+                            {opt.emoji} {opt.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {hasOther && (
+                      <p className="text-xs text-indigo-500 mt-1.5">Exact start time is required for "Other"</p>
+                    )}
+                  </div>
+
+                  {/* Exact Time */}
+                  {showExactTime && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Start time{hasOther ? ' *' : ' (optional)'}
+                        </label>
+                        <select
+                          value={form.startTime}
+                          onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
+                          required={hasOther}
+                          className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                        >
+                          <option value="">--</option>
+                          {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">End time (optional)</label>
+                        <select
+                          value={form.endTime}
+                          onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))}
+                          className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                        >
+                          <option value="">--</option>
+                          {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Location */}

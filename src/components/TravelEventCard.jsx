@@ -79,16 +79,22 @@ export default function TravelEventCard({ event, members, onClick }) {
           )}
           {eventMembers.length > 0 && (
             <div className="flex gap-1 mt-1 flex-wrap">
-              {eventMembers.map(m => (
-                <span
-                  key={m.id}
-                  title={m.name}
-                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[9px] font-bold flex-shrink-0"
-                  style={{ backgroundColor: m.color }}
-                >
-                  {m.name[0]}
+              {eventMembers.length === members.length ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-gray-100 text-gray-500">
+                  👨‍👩‍👧‍👦 Whole group
                 </span>
-              ))}
+              ) : (
+                eventMembers.map(m => (
+                  <span
+                    key={m.id}
+                    title={m.name}
+                    className="inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[9px] font-bold flex-shrink-0"
+                    style={{ backgroundColor: m.color }}
+                  >
+                    {m.name[0]}
+                  </span>
+                ))
+              )}
             </div>
           )}
         </div>

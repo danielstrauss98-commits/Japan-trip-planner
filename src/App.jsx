@@ -95,10 +95,16 @@ export default function App() {
     return (a.order || 0) - (b.order || 0)
   })
 
+  const hotels = useMemo(() =>
+    activities.filter(a => a.type === 'hotel'),
+    [activities]
+  )
+
   const activitiesByDate = useMemo(() => {
     const map = {}
     dates.forEach(d => { map[d] = [] })
     activities.forEach(a => {
+      if (a.type === 'hotel') return  // hotels are rendered separately via DayColumn hotels prop
       if (a.date && map[a.date]) map[a.date].push(a)
     })
     Object.keys(map).forEach(d => { map[d] = sortByTime(map[d]) })
@@ -106,7 +112,7 @@ export default function App() {
   }, [activities, dates])
 
   const unscheduled = useMemo(() =>
-    sortByTime(activities.filter(a => !a.date || !dates.includes(a.date))),
+    sortByTime(activities.filter(a => a.type !== 'hotel' && (!a.date || !dates.includes(a.date)))),
     [activities, dates]
   )
 
@@ -342,6 +348,15 @@ export default function App() {
     }
   }
 
+  const handleDuplicateActivity = async () => {
+    const src = activityModal?.activity
+    if (!src) return
+    const { id, date: _date, comments: _comments, addedBy: _addedBy, ...rest } = src
+    const order = (unscheduled.at(-1)?.order || 0) + 1000
+    await addActivity({ ...rest, date: '', order, comments: [], addedBy: currentUser?.name || '' })
+    setActivityModal(null)
+  }
+
   if (!unlocked) {
     return (
       <SplashScreen
@@ -491,10 +506,12 @@ export default function App() {
                     key={date}
                     date={date}
                     activities={activitiesByDate[date] || []}
+                    hotels={hotels}
                     members={members}
                     filterMemberIds={filterMemberIds}
                     onAddActivity={(d, prefillIds) => setActivityModal({ date: d, prefillMemberIds: prefillIds })}
                     onAddTravel={(d) => setTravelModal({ date: d, currentCity: dateStates[d]?.cities?.[0] || null })}
+                    onAddHotel={(d) => setActivityModal({ date: d, hotelMode: true })}
                     onEditActivity={(act) => setActivityModal({ activity: act })}
                     onEditTravel={(evt) => setTravelModal({ event: evt, date: evt.date, currentCity: evt.originCity || null })}
                     cities={dateStates[date]?.cities || []}
@@ -535,6 +552,7 @@ export default function App() {
           members={members}
           currentUserId={currentUserId}
           prefillMemberIds={activityModal.prefillMemberIds}
+          hotelMode={activityModal.hotelMode || false}
           onSave={handleSaveActivity}
           onSaveComment={(newComments) => {
             if (activityModal?.activity) {
@@ -542,6 +560,7 @@ export default function App() {
             }
           }}
           onDelete={handleDeleteActivity}
+          onDuplicate={handleDuplicateActivity}
           onClose={() => setActivityModal(null)}
         />
       )}
@@ -596,6 +615,7 @@ export default function App() {
         <MapView
           dates={dates}
           activitiesByDate={activitiesByDate}
+          hotels={hotels}
           members={members}
           dateStates={dateStates}
           tripDates={tripDates}

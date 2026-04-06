@@ -116,7 +116,7 @@ function fmtDate(dateStr) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function MapView({
-  dates, activitiesByDate, members, dateStates, tripDates, onClose,
+  dates, activitiesByDate, hotels, members, dateStates, tripDates, onClose,
 }) {
   const [selectedDate, setSelectedDate] = useState(dates[0] || '')
   const [activeTab, setActiveTab] = useState('A')
@@ -138,28 +138,40 @@ export default function MapView({
   const currentState = selectedDate !== 'all' ? (dateStates[selectedDate] || {}) : {}
   const isSplit = Boolean(currentState.split)
 
-  // Activities for the selected date / tab
+  // Activities for the selected date / tab (includes hotels that span the date)
   const selectedActivities = useMemo(() => {
+    const allHotels = (hotels || []).map(h => ({ ...h, _isHotel: true }))
+
     if (selectedDate === 'all') {
-      return dates.flatMap(d =>
+      const acts = dates.flatMap(d =>
         (activitiesByDate[d] || [])
           .filter(a => a.type !== 'travel')
           .map(a => ({ ...a, _date: d }))
       )
+      // Each hotel appears once, anchored to its check-in date
+      const mappedHotels = allHotels.map(h => ({ ...h, _date: h.checkInDate }))
+      return [...acts, ...mappedHotels]
     }
+
+    const dayHotels = allHotels.filter(h =>
+      h.checkInDate && h.checkOutDate &&
+      selectedDate >= h.checkInDate && selectedDate <= h.checkOutDate
+    )
     const dayActs = (activitiesByDate[selectedDate] || []).filter(a => a.type !== 'travel')
+
     if (isSplit) {
       const group = activeTab === 'A'
         ? currentState.split.groupA
         : currentState.split.groupB
-      return dayActs.filter(a => {
+      const filteredActs = dayActs.filter(a => {
         const ids = a.memberIds || []
         if (ids.length === 0) return true
         return ids.some(id => group.includes(id))
       })
+      return [...filteredActs, ...dayHotels]
     }
-    return dayActs
-  }, [selectedDate, activeTab, activitiesByDate, dateStates, dates, isSplit])
+    return [...dayActs, ...dayHotels]
+  }, [selectedDate, activeTab, activitiesByDate, hotels, dateStates, dates, isSplit])
 
   const mappedActivities = useMemo(() =>
     selectedActivities.filter(a => a.coordinates?.lat && a.coordinates?.lng),
@@ -335,9 +347,10 @@ export default function MapView({
               selectedActivities.map((act, idx) => {
                 const hasPins = act.coordinates?.lat
                 const color = hasPins ? getColor(act, idx) : '#d1d5db'
+                const isHotelAct = act.type === 'hotel'
                 return (
                   <button
-                    key={act.id}
+                    key={`${act.id}-${idx}`}
                     onClick={() => {
                       if (!hasPins) return
                       setHighlightedId(null)
@@ -349,17 +362,28 @@ export default function MapView({
                         : 'cursor-default opacity-60'
                     }`}
                   >
-                    <span
-                      className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-white font-bold text-[10px] mt-0.5"
-                      style={{ background: color }}
-                    >
-                      {idx + 1}
-                    </span>
+                    {isHotelAct ? (
+                      <span className="w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center text-sm mt-0.5"
+                        style={{ background: '#e0e7ff' }}>
+                        🏨
+                      </span>
+                    ) : (
+                      <span
+                        className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-white font-bold text-[10px] mt-0.5"
+                        style={{ background: color }}
+                      >
+                        {idx + 1}
+                      </span>
+                    )}
                     <div className="min-w-0">
                       <p className="font-medium text-gray-800 truncate">{act.title}</p>
-                      {buildTimeStr(act) && (
+                      {isHotelAct ? (
+                        <p className="text-gray-400 mt-0.5">
+                          {fmtDate(act.checkInDate)} → {fmtDate(act.checkOutDate)}
+                        </p>
+                      ) : buildTimeStr(act) ? (
                         <p className="text-gray-400 mt-0.5">{buildTimeStr(act)}</p>
-                      )}
+                      ) : null}
                       {!hasPins && (
                         <p className="text-gray-300 mt-0.5 italic">No address</p>
                       )}
@@ -442,27 +466,29 @@ export default function MapView({
           {/* Activity markers */}
           {mappedActivities.map((activity, idx) => {
             const color = getColor(activity, idx)
-            const isHotel = activity.category === 'hotel'
+            const isHotel = activity.type === 'hotel'
             const timeStr = buildTimeStr(activity)
-            const num = selectedDate === 'all'
-              ? String(idx + 1)
-              : String(idx + 1)
 
             return (
               <Marker
-                key={activity.id}
+                key={`${activity.id}-${selectedDate}`}
                 ref={(m) => registerMarker(activity.id, m)}
                 position={[activity.coordinates.lat, activity.coordinates.lng]}
-                icon={createMarkerIcon(num, color, isHotel)}
+                icon={createMarkerIcon(String(idx + 1), color, isHotel)}
               >
                 <Popup>
                   <div style={{ minWidth: 160 }}>
                     <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 2, color: '#1f2937' }}>
-                      {activity.title}
+                      {isHotel ? `🏨 ${activity.title}` : activity.title}
                     </p>
-                    {timeStr && (
+                    {isHotel ? (
+                      <p style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>
+                        {`Check-in: ${fmtDate(activity.checkInDate)}`}<br />
+                        {`Check-out: ${fmtDate(activity.checkOutDate)}`}
+                      </p>
+                    ) : timeStr ? (
                       <p style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>{timeStr}</p>
-                    )}
+                    ) : null}
                     {activity.address && (
                       <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>{activity.address}</p>
                     )}
